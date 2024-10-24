@@ -22,10 +22,12 @@ CACHE_VERSION = 2
 def git_commits_for(path):
     return subprocess.check_output(['git', 'log', "--format=%H", path]).strip().decode().splitlines()
 
+
 def git_show(ref, name, repo_client):
     commit_tree = repo_client.commit(ref).tree
 
     return commit_tree[name].data_stream.read()
+
 
 def fetch_all_records_v0():
     commits = git_commits_for("helldivers.json")[:1440]
@@ -70,6 +72,7 @@ def fetch_all_records_v0():
 
     out.sort(key=lambda row: row.snapshot_at)
     return out
+
 
 def fetch_all_records_v1():
     commits = git_commits_for("801_full_v1.json")[:1440]
@@ -117,7 +120,9 @@ def fetch_all_records_v1():
     out.sort(key=lambda row: row.snapshot_at)
     return out
 
+
 RECENCY = 6 * 24 
+
 
 def create_agg_stats():
     records = [v1_to_frontend(rec) for rec in fetch_all_records_v1()]
@@ -157,10 +162,12 @@ def create_agg_stats():
     with open('./docs/data/current_status.json', 'w') as fh:
         fh.write(records[-1].model_dump_json())
 
+
 def wrap_if_str(val):
     if isinstance(val, str):
         return {'en-US':val}
     return val
+
 
 def v1_to_frontend(v1_rec: v1.FullStatus) -> frontend.CurrentStatus:
     planets = []
@@ -233,6 +240,7 @@ def v1_to_frontend(v1_rec: v1.FullStatus) -> frontend.CurrentStatus:
         'snapshot_at': int(v1_rec.snapshot_at.timestamp()*1000),
     })
 
+
 def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
     events = []
     planets: List[frontend.Planet] = []
@@ -296,6 +304,7 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
         'dispatches':[dataclasses.asdict(d) for d in v0_rec.global_events],
         'snapshot_at': war_details.now,
     })
+
 
 if __name__ == "__main__":
     create_agg_stats()
