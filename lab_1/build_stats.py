@@ -15,13 +15,28 @@ from models import frontend, v0, v1
 PLANET_INDEXES = range(261)
 
 CACHE_DIR = "_cache"
-# Bump this with any changes to `fetch_all_records`
 CACHE_VERSION = 2
+RECENCY = 6 * 24
+
+HELDIVERS_FILE = "helldivers.json"
+V1_FILE = "801_full_v1.json"
+GIT_LOG_FORMAT = "--format=%H"
+COMMIT_LIMIT = 1440
+CACHE_V0_DIR = "v0"
+CACHE_V1_DIR = "v1"
+ERROR_KEY = "error"
+ERRORS_KEY = "errors"
+SKIP_REF_PREFIX = "a514ea"
+FORMAT_FILE = ".json"
+
+AGGREGATES_FILE = "./docs/data/aggregates.json"
+RECENT_ATTACKS_FILE = "./docs/data/recent_attacks.json"
+CURRENT_STATUS_FILE = "./docs/data/current_status.json"
 
 
 def git_commits_for(path):
     return (
-        subprocess.check_output(["git", "log", "--format=%H", path])
+        subprocess.check_output(["git", "log", GIT_LOG_FORMAT, path])
         .strip()
         .decode()
         .splitlines()
@@ -35,14 +50,14 @@ def git_show(ref, name, repo_client):
 
 
 def fetch_all_records_v0():
-    commits = git_commits_for("helldivers.json")[:1440]
+    commits = git_commits_for(HELDIVERS_FILE)[COMMIT_LIMIT]
 
     repo = git.Repo(".", odbt=git.db.GitCmdObjectDB)
 
     out: List[v0.FullStatus] = []
 
     for ref in commits:
-        cache_path = os.path.join(CACHE_DIR, "v0", ref[:2], ref[2:] + ".json")
+        cache_path = os.path.join(CACHE_DIR, CACHE_V0_DIR, ref[:2], ref[2:] + FORMAT_FILE)
 
         if os.path.exists(cache_path):
             with open(cache_path) as fh:
@@ -56,11 +71,11 @@ def fetch_all_records_v0():
                     continue
         try:
             record = TypeAdapter(v0.FullStatus).validate_json(
-                git_show(ref, "helldivers.json", repo)
+                git_show(ref, HELDIVERS_FILE, repo)
             )
         except ValidationError as exc:
-            res = json.loads(git_show(ref, "helldivers.json", repo))
-            if "error" in res.keys() or "errors" in res.keys():
+            res = json.loads(git_show(ref, HELDIVERS_FILE, repo))
+            if ERROR_KEY in res.keys() or ERRORS_KEY in res.keys():
                 continue
             print(f"Bad committed data {exc.errors()[0]}")
         timestamp = repo.commit(ref).committed_datetime.astimezone(
@@ -83,14 +98,14 @@ def fetch_all_records_v0():
 
 
 def fetch_all_records_v1():
-    commits = git_commits_for("801_full_v1.json")[:1440]
+    commits = git_commits_for(V1_FILE)[COMMIT_LIMIT]
 
     repo = git.Repo(".", odbt=git.db.GitCmdObjectDB)
 
     out: List[v1.FullStatus] = []
 
     for ref in commits:
-        cache_path = os.path.join(CACHE_DIR, "v1", ref[:2], ref[2:] + ".json")
+        cache_path = os.path.join(CACHE_DIR, CACHE_V1_DIR, ref[:2], ref[2:] + FORMAT_FILE)
 
         if os.path.exists(cache_path):
             with open(cache_path) as fh:
@@ -104,13 +119,13 @@ def fetch_all_records_v1():
                     continue
         try:
             record = v1.FullStatus.model_validate_json(
-                git_show(ref, "801_full_v1.json", repo)
+                git_show(ref, V1_FILE, repo)
             )
         except ValidationError as exc:
-            if ref.startswith("a514ea"):
+            if ref.startswith(SKIP_REF_PREFIX):
                 continue
-            res = json.loads(git_show(ref, "801_full_v1.json", repo))
-            if "error" in res.keys() or "errors" in res.keys():
+            res = json.loads(git_show(ref, V1_FILE, repo))
+            if ERROR_KEY in res.keys() or ERRORS_KEY in res.keys():
                 continue
             print(f"Bad committed data {exc.errors()[0]}")
         timestamp = repo.commit(ref).committed_datetime.astimezone(
@@ -173,7 +188,7 @@ def create_agg_stats():
         timestamps.append(step.snapshot_at)
         impact.append(step.war.impact_multiplier)
 
-    with open("./docs/data/aggregates.json", "w") as fh:
+    with open(AGGREGATES_FILE, "w") as fh:
         json.dump(
             [
                 {"timestamp": v1, "players": v2, "impact": v3, "attacks": v4}
@@ -183,9 +198,9 @@ def create_agg_stats():
             ],
             fh,
         )
-    with open("./docs/data/recent_attacks.json", "w") as fh:
+    with open(RECENT_ATTACKS_FILE, "w") as fh:
         json.dump(most_active, fh)
-    with open("./docs/data/current_status.json", "w") as fh:
+    with open(CURRENT_STATUS_FILE, "w") as fh:
         fh.write(records[-1].model_dump_json())
 
 
