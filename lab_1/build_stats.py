@@ -57,7 +57,12 @@ def fetch_all_records_v0():
     out: List[v0.FullStatus] = []
 
     for ref in commits:
-        cache_path = os.path.join(CACHE_DIR, CACHE_V0_DIR, ref[:2], ref[2:] + FORMAT_FILE)
+        cache_path = os.path.join(
+            CACHE_DIR,
+            CACHE_V0_DIR,
+            ref[:2],
+            ref[2:] + FORMAT_FILE
+        )
 
         if os.path.exists(cache_path):
             with open(cache_path) as fh:
@@ -105,7 +110,12 @@ def fetch_all_records_v1():
     out: List[v1.FullStatus] = []
 
     for ref in commits:
-        cache_path = os.path.join(CACHE_DIR, CACHE_V1_DIR, ref[:2], ref[2:] + FORMAT_FILE)
+        cache_path = os.path.join(
+            CACHE_DIR,
+            CACHE_V1_DIR,
+            ref[:2],
+            ref[2:] + FORMAT_FILE
+        )
 
         if os.path.exists(cache_path):
             with open(cache_path) as fh:
@@ -157,7 +167,8 @@ def create_agg_stats():
     time_correction = []
     impact = []
     active = set(
-        [campaign.planet.index for campaign in records[len(records) - 1].active]
+        [campaign.planet.index
+        for campaign in records[len(records) - 1].active]
     )
     active_sum = {p: 0 for p in active}
     active_planet_hist = []
@@ -348,7 +359,10 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
                             j["id"] for j in event.joint_operations
                         ],
                         "planet": next(
-                            filter(lambda p: p.index == event.planet.index, planets)
+                            filter(
+                                lambda p: p.index == event.planet.index,
+                                planets
+                                )
                         ),
                     }
                 )
@@ -375,7 +389,10 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
                     "count": campaign.count,
                     "id": campaign.id,
                     "planet": next(
-                        filter(lambda p: p.index == campaign.planet.index, planets)
+                        filter(
+                            lambda p: p.index == campaign.planet.index, 
+                            planets
+                        )
                     ),
                     "type": campaign.type,
                 }
@@ -389,7 +406,8 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
             "assignments": [],
             "war": war_details,
             "active": campaigns,
-            "dispatches": [dataclasses.asdict(d) for d in v0_rec.global_events],
+            "dispatches": [dataclasses.asdict(d)
+            for d in v0_rec.global_events],
             "snapshot_at": war_details.now,
         }
     )
@@ -397,6 +415,8 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
 
 if __name__ == "__main__":
     create_agg_stats()
-# Plotting recent attacks based solely on player count is a bit boring sometimes. Maybe we should use variance of liberation?
+# Plotting recent attacks based solely on player count is a bit boring sometimes.
+# Maybe we should use variance of liberation?
 
-# intial_owner's do change, such as when we lost the defense of Angel's Venture. We should keep track of these and add them to the message logs
+# intial_owner's do change, such as when we lost the defense of Angel's Venture.
+# We should keep track of these and add them to the message logs
