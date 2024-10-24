@@ -14,13 +14,18 @@ from models import frontend, v0, v1
 
 PLANET_INDEXES = range(261)
 
-CACHE_DIR = '_cache'
+CACHE_DIR = "_cache"
 # Bump this with any changes to `fetch_all_records`
 CACHE_VERSION = 2
 
 
 def git_commits_for(path):
-    return subprocess.check_output(['git', 'log', "--format=%H", path]).strip().decode().splitlines()
+    return (
+        subprocess.check_output(["git", "log", "--format=%H", path])
+        .strip()
+        .decode()
+        .splitlines()
+    )
 
 
 def git_show(ref, name, repo_client):
@@ -32,7 +37,7 @@ def git_show(ref, name, repo_client):
 def fetch_all_records_v0():
     commits = git_commits_for("helldivers.json")[:1440]
 
-    repo = git.Repo('.', odbt=git.db.GitCmdObjectDB)
+    repo = git.Repo(".", odbt=git.db.GitCmdObjectDB)
 
     out: List[v0.FullStatus] = []
 
@@ -50,25 +55,28 @@ def fetch_all_records_v0():
                     out.append(record)
                     continue
         try:
-            record = TypeAdapter(v0.FullStatus).validate_json(git_show(ref, 'helldivers.json', repo))
+            record = TypeAdapter(v0.FullStatus).validate_json(
+                git_show(ref, "helldivers.json", repo)
+            )
         except ValidationError as exc:
-            res = json.loads(git_show(ref, 'helldivers.json', repo))
-            if 'error' in res.keys() or 'errors' in res.keys():
+            res = json.loads(git_show(ref, "helldivers.json", repo))
+            if "error" in res.keys() or "errors" in res.keys():
                 continue
             print(f"Bad committed data {exc.errors()[0]}")
-        timestamp = repo.commit(ref).committed_datetime.astimezone(datetime.timezone.utc)
+        timestamp = repo.commit(ref).committed_datetime.astimezone(
+            datetime.timezone.utc
+        )
         record.snapshot_at = timestamp
         record.version = CACHE_VERSION
-        
+
         out.append(record)
-            
+
         try:
             os.makedirs(os.path.dirname(cache_path))
         except FileExistsError:
             pass
-        with open(cache_path, 'w') as fh:
+        with open(cache_path, "w") as fh:
             fh.write(RootModel[v0.FullStatus](record).model_dump_json())
-
 
     out.sort(key=lambda row: row.snapshot_at)
     return out
@@ -77,7 +85,7 @@ def fetch_all_records_v0():
 def fetch_all_records_v1():
     commits = git_commits_for("801_full_v1.json")[:1440]
 
-    repo = git.Repo('.', odbt=git.db.GitCmdObjectDB)
+    repo = git.Repo(".", odbt=git.db.GitCmdObjectDB)
 
     out: List[v1.FullStatus] = []
 
@@ -95,45 +103,49 @@ def fetch_all_records_v1():
                     out.append(record)
                     continue
         try:
-            record = v1.FullStatus.model_validate_json(git_show(ref, '801_full_v1.json', repo))
+            record = v1.FullStatus.model_validate_json(
+                git_show(ref, "801_full_v1.json", repo)
+            )
         except ValidationError as exc:
-            if ref.startswith('a514ea'):
+            if ref.startswith("a514ea"):
                 continue
-            res = json.loads(git_show(ref, '801_full_v1.json', repo))
-            if 'error' in res.keys() or 'errors' in res.keys():
+            res = json.loads(git_show(ref, "801_full_v1.json", repo))
+            if "error" in res.keys() or "errors" in res.keys():
                 continue
             print(f"Bad committed data {exc.errors()[0]}")
-        timestamp = repo.commit(ref).committed_datetime.astimezone(datetime.timezone.utc)
+        timestamp = repo.commit(ref).committed_datetime.astimezone(
+            datetime.timezone.utc
+        )
         record.snapshot_at = timestamp
         record.version = CACHE_VERSION
-        
+
         out.append(record)
-            
+
         try:
             os.makedirs(os.path.dirname(cache_path))
         except FileExistsError:
             pass
-        with open(cache_path, 'w') as fh:
+        with open(cache_path, "w") as fh:
             fh.write(record.model_dump_json())
-
 
     out.sort(key=lambda row: row.snapshot_at)
     return out
 
 
-RECENCY = 6 * 24 
+RECENCY = 6 * 24
 
 
 def create_agg_stats():
     records = [v1_to_frontend(rec) for rec in fetch_all_records_v1()]
-    players = [0]*len(records)
+    players = [0] * len(records)
     timestamps = []
     time_correction = []
     impact = []
-    active = set([campaign.planet.index for campaign in records[len(records)-1].active])
-    active_sum = {p:0 for p in active}
+    active = set(
+        [campaign.planet.index for campaign in records[len(records) - 1].active]
+    )
+    active_sum = {p: 0 for p in active}
     active_planet_hist = []
-
 
     recent_start = len(records) - (RECENCY)
     for (step, record) in enumerate(records):
@@ -141,12 +153,18 @@ def create_agg_stats():
         for status in record.planets:
             players[step] += status.statistics.player_count
             if status.index in active:
-                active_step[status.index] = {'players': status.statistics.player_count, 'liberation': status.liberation}
+                active_step[status.index] = {
+                    "players": status.statistics.player_count,
+                    "liberation": status.liberation,
+                }
                 if step > recent_start:
                     active_sum[status.index] += status.statistics.player_count
         for event in record.events:
             planet = record.planets[event.planet.index]
-            active_step[event.planet.index] = {'players': planet.statistics.player_count, 'liberation': event.liberation}
+            active_step[event.planet.index] = {
+                "players": planet.statistics.player_count,
+                "liberation": event.liberation,
+            }
         active_planet_hist.append(active_step)
 
     most_active = sorted(active_sum.items(), key=lambda x: x[1], reverse=True)
@@ -155,17 +173,25 @@ def create_agg_stats():
         timestamps.append(step.snapshot_at)
         impact.append(step.war.impact_multiplier)
 
-    with open('./docs/data/aggregates.json', 'w') as fh:
-        json.dump([{'timestamp':v1, 'players': v2, 'impact': v3, 'attacks': v4} for v1, v2, v3, v4 in zip(timestamps, players, impact, active_planet_hist)], fh)
-    with open('./docs/data/recent_attacks.json', 'w') as fh:
+    with open("./docs/data/aggregates.json", "w") as fh:
+        json.dump(
+            [
+                {"timestamp": v1, "players": v2, "impact": v3, "attacks": v4}
+                for v1, v2, v3, v4 in zip(
+                    timestamps, players, impact, active_planet_hist
+                )
+            ],
+            fh,
+        )
+    with open("./docs/data/recent_attacks.json", "w") as fh:
         json.dump(most_active, fh)
-    with open('./docs/data/current_status.json', 'w') as fh:
+    with open("./docs/data/current_status.json", "w") as fh:
         fh.write(records[-1].model_dump_json())
 
 
 def wrap_if_str(val):
     if isinstance(val, str):
-        return {'en-US':val}
+        return {"en-US": val}
     return val
 
 
@@ -174,44 +200,56 @@ def v1_to_frontend(v1_rec: v1.FullStatus) -> frontend.CurrentStatus:
     events = []
 
     for planet in v1_rec.planets:
-        planet.name = wrap_if_str(planet.name) 
+        planet.name = wrap_if_str(planet.name)
         planet.position.x *= 100
         planet.position.y *= 100
         planets.append(frontend.Planet.model_validate(planet.model_dump()))
         if planet.event is not None:
-            events.append(frontend.Defense.model_validate({
-                'id': planet.event.id,
-                'faction':planet.event.faction,
-                'type':planet.event.event_type,
-                'start_time':int(planet.event.start_time.timestamp()*1000),
-                'end_time':int(planet.event.end_time.timestamp()*1000),
-                'health':planet.event.health,
-                'max_health':planet.event.max_health,
-                'joint_operation_ids': planet.event.joint_operation_ids,
-                'planet': planet.model_dump(),
-            }))
+            events.append(
+                frontend.Defense.model_validate(
+                    {
+                        "id": planet.event.id,
+                        "faction": planet.event.faction,
+                        "type": planet.event.event_type,
+                        "start_time": int(planet.event.start_time.timestamp() * 1000),
+                        "end_time": int(planet.event.end_time.timestamp() * 1000),
+                        "health": planet.event.health,
+                        "max_health": planet.event.max_health,
+                        "joint_operation_ids": planet.event.joint_operation_ids,
+                        "planet": planet.model_dump(),
+                    }
+                )
+            )
 
     assignments = []
     for assignment in v1_rec.assignments:
-        assignments.append(frontend.Assignment.model_validate({
-            'id': assignment.id,
-            'title': wrap_if_str(assignment.title),
-            'briefing': wrap_if_str(assignment.briefing),
-            'description': wrap_if_str(assignment.description),
-            'tasks': [task.model_dump() for task in assignment.tasks],
-            'reward': assignment.reward.model_dump(),
-            'progress': assignment.progress,
-            'expiration': int(assignment.expiration.timestamp()*1000),
-        }))
+        assignments.append(
+            frontend.Assignment.model_validate(
+                {
+                    "id": assignment.id,
+                    "title": wrap_if_str(assignment.title),
+                    "briefing": wrap_if_str(assignment.briefing),
+                    "description": wrap_if_str(assignment.description),
+                    "tasks": [task.model_dump() for task in assignment.tasks],
+                    "reward": assignment.reward.model_dump(),
+                    "progress": assignment.progress,
+                    "expiration": int(assignment.expiration.timestamp() * 1000),
+                }
+            )
+        )
     stats = v1_rec.war.statistics
-    war_details = frontend.WarDetails.model_validate({
-        'start_time': int(v1_rec.war.started.timestamp()*1000),
-        'end_time': int(v1_rec.war.ended.timestamp()*1000),
-        'now': int(v1_rec.war.now.timestamp()*1000),
-        'factions': v1_rec.war.factions,
-        'impact_multiplier': v1_rec.war.impact_multiplier,
-        'statistics': frontend.Statistics.model_validate(v1_rec.war.statistics.model_dump()),
-    })
+    war_details = frontend.WarDetails.model_validate(
+        {
+            "start_time": int(v1_rec.war.started.timestamp() * 1000),
+            "end_time": int(v1_rec.war.ended.timestamp() * 1000),
+            "now": int(v1_rec.war.now.timestamp() * 1000),
+            "factions": v1_rec.war.factions,
+            "impact_multiplier": v1_rec.war.impact_multiplier,
+            "statistics": frontend.Statistics.model_validate(
+                v1_rec.war.statistics.model_dump()
+            ),
+        }
+    )
 
     campaigns = []
     for campaign in v1_rec.campaigns:
@@ -224,21 +262,27 @@ def v1_to_frontend(v1_rec: v1.FullStatus) -> frontend.CurrentStatus:
     for dispatch in v1_rec.dispatches:
         if dispatch.message is None:
             continue
-        dispatches.append(frontend.Dispatch.model_validate({
-            'id': dispatch.id,
-            'message': wrap_if_str(dispatch.message),
-            'title':wrap_if_str('Dispatch'),
-        }))
+        dispatches.append(
+            frontend.Dispatch.model_validate(
+                {
+                    "id": dispatch.id,
+                    "message": wrap_if_str(dispatch.message),
+                    "title": wrap_if_str("Dispatch"),
+                }
+            )
+        )
 
-    return frontend.CurrentStatus.model_validate({
-        'events': events,
-        'planets': planets,
-        'assignments': assignments,
-        'war': war_details,
-        'active': campaigns,
-        'dispatches': dispatches,
-        'snapshot_at': int(v1_rec.snapshot_at.timestamp()*1000),
-    })
+    return frontend.CurrentStatus.model_validate(
+        {
+            "events": events,
+            "planets": planets,
+            "assignments": assignments,
+            "war": war_details,
+            "active": campaigns,
+            "dispatches": dispatches,
+            "snapshot_at": int(v1_rec.snapshot_at.timestamp() * 1000),
+        }
+    )
 
 
 def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
@@ -246,64 +290,94 @@ def v0_to_frontend(v0_rec: v0.FullStatus) -> frontend.CurrentStatus:
     planets: List[frontend.Planet] = []
     total_players = 0
     for planet_status in v0_rec.planet_status:
-        planets.append(frontend.Planet.model_validate({
-            'position': planet_status.planet.position,
-            'index': planet_status.planet.index,
-            'name': {'en-US': planet_status.planet.name},
-            'sector': planet_status.planet.sector,
-            'waypoints': planet_status.planet.waypoints,
-            'disabled': planet_status.planet.disabled,
-            'regen_per_second': planet_status.regen_per_second,
-            'current_owner': planet_status.owner,
-            'initial_owner': planet_status.planet.initial_owner,
-            'health': planet_status.health,
-            'max_health': planet_status.planet.max_health,
-            'statistics': frontend.Statistics.model_validate({'player_count':planet_status.players}),
-            'attacking': [target for (source, target) in v0_rec.planet_attacks if source == planet_status.planet.index]
-        }))
+        planets.append(
+            frontend.Planet.model_validate(
+                {
+                    "position": planet_status.planet.position,
+                    "index": planet_status.planet.index,
+                    "name": {"en-US": planet_status.planet.name},
+                    "sector": planet_status.planet.sector,
+                    "waypoints": planet_status.planet.waypoints,
+                    "disabled": planet_status.planet.disabled,
+                    "regen_per_second": planet_status.regen_per_second,
+                    "current_owner": planet_status.owner,
+                    "initial_owner": planet_status.planet.initial_owner,
+                    "health": planet_status.health,
+                    "max_health": planet_status.planet.max_health,
+                    "statistics": frontend.Statistics.model_validate(
+                        {"player_count": planet_status.players}
+                    ),
+                    "attacking": [
+                        target
+                        for (source, target) in v0_rec.planet_attacks
+                        if source == planet_status.planet.index
+                    ],
+                }
+            )
+        )
         total_players += planet_status.players
-    
+
     for event in v0_rec.planet_events:
         if event.event_type == 1:
-            events.append(frontend.Defense.model_validate({
-                'id':event.id,
-                'faction':event.race,
-                'type':event.event_type,
-                'start_time':int(event.start_time.timestamp()*1000),
-                'end_time':int(event.expire_time.timestamp()*1000),
-                'health':event.health,
-                'max_health':event.max_health,
-                'joint_operation_ids':[j['id'] for j in event.joint_operations],
-                'planet': next(filter(lambda p: p.index == event.planet.index, planets)),
-            }))
+            events.append(
+                frontend.Defense.model_validate(
+                    {
+                        "id": event.id,
+                        "faction": event.race,
+                        "type": event.event_type,
+                        "start_time": int(event.start_time.timestamp() * 1000),
+                        "end_time": int(event.expire_time.timestamp() * 1000),
+                        "health": event.health,
+                        "max_health": event.max_health,
+                        "joint_operation_ids": [
+                            j["id"] for j in event.joint_operations
+                        ],
+                        "planet": next(
+                            filter(lambda p: p.index == event.planet.index, planets)
+                        ),
+                    }
+                )
+            )
 
-    war_details = frontend.WarDetails.model_validate({
-        'start_time': int(v0_rec.started_at.timestamp()*1000),
-        'end_time': None,
-        'now': int(v0_rec.snapshot_at.timestamp()*1000),
-        'factions': ['Humans', 'Automatons', 'Terminids', 'Illuminate'],
-        'impact_multiplier': v0_rec.impact_multiplier,
-        'statistics': frontend.Statistics.model_validate({'player_count': total_players}),
-    })
+    war_details = frontend.WarDetails.model_validate(
+        {
+            "start_time": int(v0_rec.started_at.timestamp() * 1000),
+            "end_time": None,
+            "now": int(v0_rec.snapshot_at.timestamp() * 1000),
+            "factions": ["Humans", "Automatons", "Terminids", "Illuminate"],
+            "impact_multiplier": v0_rec.impact_multiplier,
+            "statistics": frontend.Statistics.model_validate(
+                {"player_count": total_players}
+            ),
+        }
+    )
 
     campaigns = []
     for campaign in v0_rec.campaigns:
-        campaigns.append(frontend.Campaign.model_validate({
-            'count':campaign.count,
-            'id':campaign.id,
-            'planet':next(filter(lambda p: p.index == campaign.planet.index, planets)),
-            'type':campaign.type,
-        }))
+        campaigns.append(
+            frontend.Campaign.model_validate(
+                {
+                    "count": campaign.count,
+                    "id": campaign.id,
+                    "planet": next(
+                        filter(lambda p: p.index == campaign.planet.index, planets)
+                    ),
+                    "type": campaign.type,
+                }
+            )
+        )
 
-    return frontend.CurrentStatus.model_validate({
-        'events': events,
-        'planets': planets,
-        'assignments': [],
-        'war': war_details,
-        'active': campaigns,
-        'dispatches':[dataclasses.asdict(d) for d in v0_rec.global_events],
-        'snapshot_at': war_details.now,
-    })
+    return frontend.CurrentStatus.model_validate(
+        {
+            "events": events,
+            "planets": planets,
+            "assignments": [],
+            "war": war_details,
+            "active": campaigns,
+            "dispatches": [dataclasses.asdict(d) for d in v0_rec.global_events],
+            "snapshot_at": war_details.now,
+        }
+    )
 
 
 if __name__ == "__main__":
