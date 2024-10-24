@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
+import collections
 import dataclasses
-from typing import Dict, List, Optional, Union
+import datetime
 import git
 import json
-import collections
-import datetime
-import subprocess
 import os
+import subprocess
+from typing import Dict, List, Optional, Union
 
 from pydantic import RootModel, TypeAdapter, ValidationError
 from models import frontend, v0, v1
